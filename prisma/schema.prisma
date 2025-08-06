@@ -1,15 +1,107 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// This is your updated schema.prisma content
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../lib/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// --- Enums ---
+enum NodeStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+  ERROR // Tambahkan status ERROR untuk kasus agen gagal melaporkan atau masalah lain
+}
+
+enum VpnCertificateStatus {
+  VALID
+  REVOKED
+  EXPIRED
+  PENDING // Tambahkan PENDING untuk saat user dibuat tapi cert belum dihasilkan/disinkronkan
+  UNKNOWN
+}
+
+enum ActionType {
+  CREATE_USER
+  REVOKE_USER
+  RESTART_NODE // Contoh action baru
+  GET_LATEST_OVPN // Untuk mengambil OVPN file yang sudah ada
+}
+
+enum ActionStatus {
+  PENDING
+  IN_PROGRESS // Opsional, untuk menandai bahwa agen sedang mengerjakan ini
+  COMPLETED
+  FAILED
+}
+
+// --- Models ---
+
+model Node {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  ip           String
+  token        String    @unique // Unique token for agent authentication
+  lastSeen     DateTime?
+  location     String?   // Lokasi fisik atau deskripsi dari node
+  status       NodeStatus @default(UNKNOWN)
+  cpuUsage     Float     @default(0.0) // Persentase CPU
+  ramUsage     Float     @default(0.0) // Persentase RAM
+  serviceStatus String    @default("UNKNOWN") // Tambahkan untuk status layanan OpenVPN (running/stopped)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  vpnUsers     VpnUser[]     // Node has many VpnUsers
+  actionLogs   ActionLog[]   // Node has many ActionLogs
+}
+
+model VpnUser {
+  id              String               @id @default(uuid())
+  username        String               @unique // Common Name of the VPN certificate
+  nodeId          String
+  node            Node                 @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  
+  status          VpnCertificateStatus @default(PENDING) // Default ke PENDING saat pertama dibuat
+  expirationDate  DateTime?            // Date when the certificate expires
+  revocationDate  DateTime?            // Date when the certificate was revoked (optional)
+  serialNumber    String?             
+
+  isActive         Boolean                @default(false) // <-- BARU: Apakah user sedang aktif terhubung?
+  lastConnected    DateTime?              // <-- BARU: Kapan terakhir kali user terhubung?
+
+  ovpnFileContent String?               @db.Text// Simpan konten OVPN di sini untuk kemudahan download
+
+  lastSeen        DateTime?            // Kapan user terakhir kali terhubung (jika bisa didapat dari OpenVPN)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  actionLogs      ActionLog[] // VpnUser now linked to ActionLogs
+}
+
+// Mengganti nama model 'Log' menjadi 'ActionLog' agar lebih spesifik
+// Ini adalah model yang akan digunakan agen untuk mengambil perintah dari dasbor
+model ActionLog {
+  id              String       @id @default(uuid())
+  action          ActionType   // Tipe aksi yang diminta (misal: CREATE_USER)
+  status          ActionStatus @default(PENDING) // Status eksekusi: PENDING, COMPLETED, FAILED
+  message         String?      // Pesan detail dari agen (misal: "User created successfully")
+  
+  nodeId          String       // Setiap aksi harus ditujukan ke Node tertentu
+  node            Node         @relation(fields: [nodeId], references: [id], onDelete: Cascade) // Jika node dihapus, log aksinya juga dihapus
+  
+  vpnUserId       String?      // Opsional, jika aksi terkait dengan VpnUser
+  vpnUser         VpnUser?     @relation(fields: [vpnUserId], references: [id], onDelete: SetNull) // SetNull jika VpnUser dihapus
+
+
+  details         String?
+
+  ovpnFileContent String?      // Hanya diisi oleh agen jika aksi adalah CREATE_USER atau GET_LATEST_OVPN
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  executedAt      DateTime?    // Kapan aksi ini dieksekusi oleh agen
 }

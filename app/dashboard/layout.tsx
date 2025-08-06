@@ -1,9 +1,11 @@
+// app/dashboard/layout.tsx
 "use client";
 
 import { Sidebar, MobileSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react"; // Import signOut
 
 export default function DashboardLayout({
   children,
@@ -12,8 +14,8 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
 
-  const handleLogout = () => {
-    router.push("/login");
+  const handleLogout = async () => { // Make it async because signOut returns a Promise
+    await signOut({ callbackUrl: "/login" }); // Call signOut and redirect to /login
   };
 
   return (

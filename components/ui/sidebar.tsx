@@ -31,11 +31,6 @@ const navigation = [
     icon: Server,
   },
   {
-    name: "Users",
-    href: "/dashboard/users",
-    icon: Users,
-  },
-  {
     name: "VPN Profiles",
     href: "/dashboard/profiles",
     icon: FileKey,
